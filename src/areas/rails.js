@@ -255,8 +255,12 @@ export function build({ scene, path, area, random }) {
 
   const cleared = () => !train.active || train.headS - TRAIN_LENGTH > track.crossingS + 4;
 
+  // 音を鳴らす側（audio.js）へ渡す状態
+  const sound = { alarm: false, position: crossing.position.clone().setY(2.5), trainCars: [] };
+
   return {
     crossingU,
+    sound,
 
     // 踏切で電車を待つ間、歩く速さを落とす（1 = そのまま歩く、0 = 立ち止まる）
     speedLimit(u) {
@@ -298,8 +302,11 @@ export function build({ scene, path, area, random }) {
         }
       }
 
+      sound.trainCars = train.active ? cars.filter((car) => car.visible).map((car) => car.position) : [];
+
       // 警報機：左右の赤いランプを交互に点ける（1秒に1往復未満のゆっくりした点滅）
       const alarm = !cleared();
+      sound.alarm = alarm;
       const step = Math.floor(time / 0.6) % 2;
       for (const { lamp, phase } of lamps) {
         lamp.material.color.copy(alarm && step === phase ? on : off);

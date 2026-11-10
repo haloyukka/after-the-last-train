@@ -4,6 +4,7 @@ import { createRandom } from './random.js';
 import { addUnderpass, createBoxBatch, createMaterials } from './street.js';
 import { createWalker } from './walker.js';
 import { createComposer, createRain, createWetGround } from './effects.js';
+import { createAudio } from './audio.js';
 import * as neon from './areas/neon.js';
 import * as houses from './areas/houses.js';
 import * as rails from './areas/rails.js';
@@ -22,6 +23,7 @@ const AREA_MODULES = { neon, houses, rails };
 const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
 const startButton = document.getElementById('start');
+const soundButton = document.getElementById('sound');
 const message = document.getElementById('message');
 
 // 端末の「視差効果を減らす」設定。有効なら揺れと明滅を抑える
@@ -89,6 +91,32 @@ function init() {
 
   const composer = createComposer(renderer, scene, camera);
 
+  // 音。前回の「音を切る」設定を覚えておく（保存できない環境では毎回「入」から始まる）
+  const audio = createAudio();
+  const railsSound = areas.find(({ area }) => area.id === 'rails').instance.sound;
+  const weights = { neon: 1, houses: 0, rails: 0 };
+  const MUTE_KEY = 'after-the-last-train:muted';
+  try {
+    audio.setMuted(window.localStorage.getItem(MUTE_KEY) === '1');
+  } catch {
+    // 保存領域が使えなくても動作に支障はない
+  }
+  const showMuted = () => {
+    soundButton.dataset.muted = String(audio.muted);
+    soundButton.setAttribute('aria-label', audio.muted ? '音を入れる' : '音を切る');
+  };
+  showMuted();
+  soundButton.addEventListener('click', () => {
+    audio.setMuted(!audio.muted);
+    showMuted();
+    try {
+      window.localStorage.setItem(MUTE_KEY, audio.muted ? '1' : '0');
+    } catch {
+      // 同上
+    }
+  });
+  document.addEventListener('visibilitychange', () => audio.setSuspended(document.hidden));
+
   // 現在地に応じた背景色と霧。エリアの境目では前後の値をなめらかに混ぜる
   const colorA = new THREE.Color();
   const colorB = new THREE.Color();
@@ -116,6 +144,11 @@ function init() {
     scene.background.copy(colorA);
     scene.fog.color.copy(colorA);
     scene.fog.density = THREE.MathUtils.lerp(current.look.fogDensity, other.look.fogDensity, mix);
+
+    // 音の混ぜ具合にも同じ割合を使う
+    for (const { area } of areas) weights[area.id] = 0;
+    weights[current.area.id] += 1 - mix;
+    weights[other.area.id] += mix;
   }
 
   function resize() {
@@ -163,13 +196,14 @@ function init() {
     // 歩行者
     path.pointAt(u, position);
     path.tangentAt(u, tangent);
-    walker.update({
+    const stepped = walker.update({
       position,
       yaw: Math.atan2(tangent.x, tangent.z),
       distance,
       time: elapsed,
       sway: reducedMotion ? 0 : 1,
     });
+    if (stepped) audio.step();
     walker.group.updateMatrixWorld(true);
     const lanternPosition = walker.getLanternPosition();
 
@@ -188,6 +222,9 @@ function init() {
     ground.update({ ...shared, fog: scene.fog });
     rain.update(shared);
 
+    camera.updateMatrixWorld();
+    audio.update({ weights, camera, crossing: railsSound, trainCars: railsSound.trainCars });
+
     composer.render();
     requestAnimationFrame(frame);
   }
@@ -198,7 +235,9 @@ function init() {
   startButton.textContent = 'はじめる';
   startButton.addEventListener('click', () => {
     walking = true;
+    audio.start();
     overlay.classList.add('is-hidden');
+    soundButton.hidden = false;
   }, { once: true });
 }
 

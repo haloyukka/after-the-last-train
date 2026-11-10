@@ -104,6 +104,43 @@ body {
   text-align: center;
 }
 
+.corner-button {
+  position: fixed;
+  right: calc(1rem + env(safe-area-inset-right));
+  bottom: calc(1rem + env(safe-area-inset-bottom));
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid rgba(216, 219, 230, 0.25);
+  border-radius: 50%;
+  background: rgba(5, 6, 12, 0.45);
+  color: var(--text);
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 0.3s ease;
+}
+
+.corner-button[hidden] {
+  display: none;
+}
+
+.corner-button:hover,
+.corner-button:focus-visible {
+  opacity: 1;
+  outline: none;
+}
+
+.corner-button .sound-off,
+.corner-button[data-muted="true"] .sound-on {
+  display: none;
+}
+
+.corner-button[data-muted="true"] .sound-off {
+  display: inline;
+}
+
 @media (prefers-reduced-motion: reduce) {
   #overlay {
     transition: none;

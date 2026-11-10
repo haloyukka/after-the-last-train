@@ -69,8 +69,11 @@ export function createWalker() {
     },
 
     // distance: このフレームで進んだ距離（m） / sway: 揺れの強さ（0〜1）
+    // 戻り値：このフレームで足が地面に着いたら true（足音を鳴らすきっかけ）
     update({ position, yaw, distance, time, sway = 1 }) {
+      const before = Math.floor(phase / Math.PI + 0.5);
       phase += (distance / STEP_LENGTH) * Math.PI;
+      const stepped = Math.floor(phase / Math.PI + 0.5) !== before;
       const swing = Math.sin(phase);
 
       group.position.set(position.x, Math.abs(swing) * 0.025 * sway, position.z);
@@ -80,6 +83,7 @@ export function createWalker() {
       umbrella.rotation.z = Math.sin(phase * 0.5) * 0.02 * sway;
       lantern.rotation.x = Math.sin(phase + 0.6) * 0.12 * sway;
       lantern.rotation.z = Math.sin(time * 1.3) * 0.04 * sway;
+      return stepped;
     },
   };
 }

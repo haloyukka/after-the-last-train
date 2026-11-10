@@ -5,6 +5,8 @@ import { addUnderpass, createBoxBatch, createMaterials } from './street.js';
 import { createWalker } from './walker.js';
 import { createComposer, createRain, createWetGround } from './effects.js';
 import { createAudio } from './audio.js';
+import { createControls } from './controls.js';
+import { createQuality } from './quality.js';
 import * as neon from './areas/neon.js';
 import * as houses from './areas/houses.js';
 import * as rails from './areas/rails.js';
@@ -16,7 +18,7 @@ const CAMERA_SIDE = 0.55; // カメラを道の右へ寄せる量（m）。歩�
 const LOOK_AHEAD = 5; // 歩行者の何m先を見るか
 const BLEND_BAND = 0.02; // エリアの境目で霧と背景色を混ぜる幅（道筋に対する割合）
 const SEED = 20261110; // 街並みの乱数の種。変えると別の街になる
-const MAX_PIXEL_RATIO = 2;
+const HINT_SECONDS = 7; // 開始直後に操作ヒントを出しておく時間
 
 const AREA_MODULES = { neon, houses, rails };
 
@@ -24,10 +26,14 @@ const canvas = document.getElementById('scene');
 const overlay = document.getElementById('overlay');
 const startButton = document.getElementById('start');
 const soundButton = document.getElementById('sound');
+const helpButton = document.getElementById('help');
+const hint = document.getElementById('hint');
 const message = document.getElementById('message');
 
 // 端末の「視差効果を減らす」設定。有効なら揺れと明滅を抑える
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// 指で操作する端末かどうか（操作ヒントの文面を切り替える）
+const touchDevice = window.matchMedia('(pointer: coarse)').matches;
 
 function showError(text) {
   startButton.hidden = true;
@@ -91,6 +97,36 @@ function init() {
 
   const composer = createComposer(renderer, scene, camera);
 
+  // 画質。重いと判断したら自動で1段階ずつ下がり、そのたびに applyQuality が呼ばれる
+  let fogScale = 1;
+  function applyQuality(settings, level) {
+    canvas.dataset.quality = level; // 確認用：いまの画質を開発者ツールから見られるようにする
+    fogScale = settings.fog;
+    ground.setReflection(settings.reflection);
+    ground.setRipple(reducedMotion ? 0 : settings.ripple);
+    rain.setCount(settings.rain);
+    composer.bloom.enabled = settings.bloom;
+    resize();
+  }
+  const quality = createQuality(applyQuality);
+
+  function resize() {
+    const width = window.innerWidth;
+    const height = window.innerHeight;
+    const settings = quality.settings;
+    const pixelRatio = Math.min(window.devicePixelRatio, settings.pixelRatio);
+    renderer.setPixelRatio(pixelRatio);
+    renderer.setSize(width, height, false);
+    composer.setSize(width, height, pixelRatio);
+    ground.setSize(width * pixelRatio * settings.reflectionScale, height * pixelRatio * settings.reflectionScale);
+    camera.aspect = width / height;
+    // 縦長の画面では左右が狭くなるので、視野を広げて街並みが入るようにする
+    camera.fov = camera.aspect < 1 ? 74 : 58;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resize);
+  applyQuality(quality.settings, quality.level);
+
   // 音。前回の「音を切る」設定を覚えておく（保存できない環境では毎回「入」から始まる）
   const audio = createAudio();
   const railsSound = areas.find(({ area }) => area.id === 'rails').instance.sound;
@@ -116,6 +152,26 @@ function init() {
     }
   });
   document.addEventListener('visibilitychange', () => audio.setSuspended(document.hidden));
+
+  // 操作と、操作ヒント
+  const controls = createControls(canvas);
+  hint.textContent = touchDevice
+    ? '横スワイプで見回す ・ 縦スワイプで速さ ・ 長押しで立ち止まる ・ 画面の端をタップで左右に寄る'
+    : 'ドラッグで見回す ・ ↑↓で速さ ・ ←→で左右に寄る ・ スペースで立ち止まる';
+  let hintTimer = 0;
+  function showHint(seconds) {
+    window.clearTimeout(hintTimer);
+    hint.classList.add('is-visible');
+    if (seconds) hintTimer = window.setTimeout(() => hint.classList.remove('is-visible'), seconds * 1000);
+  }
+  helpButton.addEventListener('click', () => {
+    if (hint.classList.contains('is-visible')) {
+      window.clearTimeout(hintTimer);
+      hint.classList.remove('is-visible');
+    } else {
+      showHint(HINT_SECONDS);
+    }
+  });
 
   // 現在地に応じた背景色と霧。エリアの境目では前後の値をなめらかに混ぜる
   const colorA = new THREE.Color();
@@ -143,27 +199,13 @@ function init() {
     colorA.lerp(colorB, mix);
     scene.background.copy(colorA);
     scene.fog.color.copy(colorA);
-    scene.fog.density = THREE.MathUtils.lerp(current.look.fogDensity, other.look.fogDensity, mix);
+    scene.fog.density = THREE.MathUtils.lerp(current.look.fogDensity, other.look.fogDensity, mix) * fogScale;
 
     // 音の混ぜ具合にも同じ割合を使う
     for (const { area } of areas) weights[area.id] = 0;
     weights[current.area.id] += 1 - mix;
     weights[other.area.id] += mix;
   }
-
-  function resize() {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    const pixelRatio = Math.min(window.devicePixelRatio, MAX_PIXEL_RATIO);
-    renderer.setPixelRatio(pixelRatio);
-    renderer.setSize(width, height, false);
-    composer.setSize(width, height, pixelRatio);
-    ground.setSize(width * pixelRatio * 0.5, height * pixelRatio * 0.5);
-    camera.aspect = width / height;
-    camera.updateProjectionMatrix();
-  }
-  window.addEventListener('resize', resize);
-  resize();
 
   // 毎フレームの更新
   // 道筋上の現在位置（0〜1）。確認用に ?u=0.5 のようにURLで開始位置を指定できる
@@ -177,25 +219,35 @@ function init() {
   const right = new THREE.Vector3();
   const behind = new THREE.Vector3();
   const ahead = new THREE.Vector3();
+  const gaze = new THREE.Vector3();
+  const pitchAxis = new THREE.Vector3();
+  const up = new THREE.Vector3(0, 1, 0);
 
   function frame(now) {
+    const rawDelta = (now - previous) / 1000;
     // タブが裏に回っていた間の時間を一気に進めないよう、1フレームの上限を設ける
-    const delta = Math.min((now - previous) / 1000, 0.1);
+    const delta = Math.min(rawDelta, 0.1);
     previous = now;
     elapsed += delta;
+    quality.update(rawDelta);
+
+    const input = controls.update(delta);
 
     // エリア側から「ここでは立ち止まる」という指示（踏切の電車待ち）があれば従う
     let limit = 1;
     for (const { instance } of areas) {
       if (instance.speedLimit) limit = Math.min(limit, instance.speedLimit(u));
     }
-    speed = THREE.MathUtils.damp(speed, walking ? WALK_SPEED * limit : 0, 4, delta);
+    const wanted = walking ? WALK_SPEED * Math.min(input.speedFactor, 2) * limit : 0;
+    speed = THREE.MathUtils.damp(speed, wanted, 4, delta);
     const distance = speed * delta;
     u = path.wrap(u + distance / path.length);
 
-    // 歩行者
+    // 歩行者（道の中心から左右へ寄った位置）
     path.pointAt(u, position);
     path.tangentAt(u, tangent);
+    path.rightAt(u, right);
+    position.addScaledVector(right, input.lateral);
     const stepped = walker.update({
       position,
       yaw: Math.atan2(tangent.x, tangent.z),
@@ -207,13 +259,18 @@ function init() {
     walker.group.updateMatrixWorld(true);
     const lanternPosition = walker.getLanternPosition();
 
-    // カメラ：歩行者の後ろ上から、少し先を見る
+    // カメラ：歩行者の後ろ上から、少し先を見る。見回す操作のぶんだけ視線を回す
     const behindU = u - CAMERA_BEHIND / path.length;
     path.pointAt(behindU, behind);
     path.rightAt(behindU, right);
+    const side = CAMERA_SIDE + input.lateral * 0.85;
+    camera.position.set(behind.x + right.x * side, CAMERA_HEIGHT, behind.z + right.z * side);
     path.pointAt(u + LOOK_AHEAD / path.length, ahead);
-    camera.position.set(behind.x + right.x * CAMERA_SIDE, CAMERA_HEIGHT, behind.z + right.z * CAMERA_SIDE);
-    camera.lookAt(ahead.x, 1.35, ahead.z);
+    gaze.set(ahead.x - camera.position.x, 1.35 - CAMERA_HEIGHT, ahead.z - camera.position.z);
+    gaze.applyAxisAngle(up, input.yaw);
+    pitchAxis.set(-gaze.z, 0, gaze.x).normalize();
+    gaze.applyAxisAngle(pitchAxis, input.pitch);
+    camera.lookAt(camera.position.x + gaze.x, camera.position.y + gaze.y, camera.position.z + gaze.z);
 
     applyLook(u);
     for (const { instance } of areas) instance.update(elapsed, { u, delta, walkSpeed: WALK_SPEED });
@@ -236,8 +293,12 @@ function init() {
   startButton.addEventListener('click', () => {
     walking = true;
     audio.start();
+    controls.enable();
+    quality.start();
     overlay.classList.add('is-hidden');
     soundButton.hidden = false;
+    helpButton.hidden = false;
+    showHint(HINT_SECONDS);
   }, { once: true });
 }
 

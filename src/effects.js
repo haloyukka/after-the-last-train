@@ -25,6 +25,7 @@ const groundShader = {
     uLanternPosition: { value: new THREE.Vector3() },
     uLanternColor: { value: new THREE.Color() },
     uRipple: { value: 1 },
+    uReflection: { value: 1 },
   },
 
   vertexShader: /* glsl */ `
@@ -50,6 +51,7 @@ const groundShader = {
     uniform vec3 uLanternPosition;
     uniform vec3 uLanternColor;
     uniform float uRipple;
+    uniform float uReflection;
     varying vec4 vUv;
     varying vec3 vWorld;
 
@@ -127,7 +129,9 @@ const groundShader = {
       vec3 asphalt = color * mix(0.7, 1.0, grain) * mix(1.0, 0.55, puddle);
       vec3 lit = asphalt * (vec3(0.04, 0.045, 0.06) + uLanternColor * lanternLight * 3.2);
 
-      vec3 result = lit + reflection * wetness * fresnel;
+      // 映り込みを切っている画質では、代わりに空の色をうっすら映して濡れた感じを残す
+      vec3 mirrored = mix(uFogColor * 0.6, reflection, uReflection);
+      vec3 result = lit + mirrored * wetness * fresnel;
 
       // 霧
       float fog = 1.0 - exp(-uFogDensity * uFogDensity * distanceToCamera * distanceToCamera);
@@ -152,9 +156,19 @@ export function createWetGround({ size = 800, center = new THREE.Vector3(), colo
   ground.position.copy(center);
 
   const uniforms = ground.material.uniforms;
+  const renderReflection = ground.onBeforeRender;
+  const skipReflection = () => {};
 
   return {
     mesh: ground,
+    // 映り込みの入・切。切ると、街を上下反転してもう一度描く処理そのものを止める（最も負荷が下がる）
+    setReflection(enabled) {
+      ground.onBeforeRender = enabled ? renderReflection : skipReflection;
+      uniforms.uReflection.value = enabled ? 1 : 0;
+    },
+    setRipple(strength) {
+      uniforms.uRipple.value = strength;
+    },
     // 反射用の画像の解像度。画面の半分程度で十分（にじませて使うため）
     setSize(width, height) {
       ground.getRenderTarget().setSize(Math.max(1, Math.floor(width)), Math.max(1, Math.floor(height)));
@@ -262,6 +276,10 @@ export function createRain({ count = 3500, box = new THREE.Vector3(30, 14, 30) }
 
   return {
     mesh: lines,
+    // 降らせる雨粒の数（1粒につき線の両端で2頂点）
+    setCount(value) {
+      geometry.setDrawRange(0, Math.min(value, count) * 2);
+    },
     update({ time, camera, lanternPosition, lanternColor }) {
       material.uniforms.uTime.value = time;
       material.uniforms.uCenter.value.copy(camera.position);

@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>終電のあと / After the Last Train</title>
+  <meta name="description" content="灯りを持って、雨の深夜の街を歩き続けるブラウザ上の3D体験。">
+  <meta name="theme-color" content="#05060c">
+  <meta name="color-scheme" content="dark">
+  <link rel="stylesheet" href="./style.css">
+
+  <!-- Three.js はバージョンを固定してCDNから読み込む -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.187.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.187.0/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <canvas id="scene" aria-label="深夜の街を歩く3Dの風景"></canvas>
+
+  <div id="overlay">
+    <h1 class="title">終電のあと</h1>
+    <p class="subtitle">After the Last Train</p>
+    <button id="start" type="button" disabled>読み込み中…</button>
+    <p id="message" class="message" hidden></p>
+  </div>
+
+  <noscript>
+    <p class="noscript">このページの表示には JavaScript と WebGL が必要です。</p>
+  </noscript>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>

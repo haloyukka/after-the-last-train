@@ -1,0 +1,14 @@
+Copyright (c) 2026 haloyukka. All rights reserved.
+
+このリポジトリのソースコード、文章、画像は、参照（閲覧）のために公開しています。
+著作権者の事前の書面による許可なく、複製、改変、再配布、再利用（商用・非商用を問わず）することはできません。
+
+The source code, text and images in this repository are published for reference only.
+No permission is granted to copy, modify, redistribute or reuse them, in whole or in part,
+for any purpose, without prior written permission from the copyright holder.
+
+---
+
+このサイトは実行時に Three.js（MIT License, Copyright (c) 2010-2026 three.js authors）を
+CDN から読み込みます。Three.js 自体はこのリポジトリに含まれておらず、上記の制限の対象外です。
+https://github.com/mrdoob/three.js/blob/dev/LICENSE

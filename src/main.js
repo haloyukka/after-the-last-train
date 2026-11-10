@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { AREAS, createPath } from './path.js';
 import { createRandom } from './random.js';
+import { addUnderpass, createBoxBatch, createMaterials } from './street.js';
 import { createWalker } from './walker.js';
 import { createComposer, createRain, createWetGround } from './effects.js';
 import * as neon from './areas/neon.js';
@@ -71,6 +72,11 @@ function init() {
     instance: AREA_MODULES[area.id].build({ scene, path, area, random, reducedMotion }),
   }));
 
+  // エリアの境目ごとに、道をまたぐ高架を置く
+  const underpasses = createBoxBatch(createMaterials().solid);
+  for (const area of AREAS) addUnderpass(underpasses, path, area.from);
+  scene.add(underpasses.build());
+
   // 歩行者、濡れた路面、雨
   const walker = createWalker();
   scene.add(walker.group);
@@ -130,6 +136,7 @@ function init() {
   // 道筋上の現在位置（0〜1）。確認用に ?u=0.5 のようにURLで開始位置を指定できる
   let u = path.wrap(Number(new URLSearchParams(window.location.search).get('u')) || 0);
   let walking = false;
+  let speed = 0; // 現在の歩く速さ（m/秒）。歩き出しと立ち止まりをなめらかにする
   let elapsed = 0;
   let previous = performance.now();
   const position = new THREE.Vector3();
@@ -144,7 +151,13 @@ function init() {
     previous = now;
     elapsed += delta;
 
-    const distance = walking ? WALK_SPEED * delta : 0;
+    // エリア側から「ここでは立ち止まる」という指示（踏切の電車待ち）があれば従う
+    let limit = 1;
+    for (const { instance } of areas) {
+      if (instance.speedLimit) limit = Math.min(limit, instance.speedLimit(u));
+    }
+    speed = THREE.MathUtils.damp(speed, walking ? WALK_SPEED * limit : 0, 4, delta);
+    const distance = speed * delta;
     u = path.wrap(u + distance / path.length);
 
     // 歩行者
@@ -169,7 +182,7 @@ function init() {
     camera.lookAt(ahead.x, 1.35, ahead.z);
 
     applyLook(u);
-    for (const { instance } of areas) instance.update(elapsed);
+    for (const { instance } of areas) instance.update(elapsed, { u, delta, walkSpeed: WALK_SPEED });
 
     const shared = { time: elapsed, camera, lanternPosition, lanternColor: walker.lanternColor };
     ground.update({ ...shared, fog: scene.fog });

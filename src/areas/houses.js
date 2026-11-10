@@ -13,7 +13,7 @@ const LAMP_COLOR = 0xcfe4ff;
 const WALL_COLORS = [0x14151a, 0x17181c, 0x111318];
 
 export function build({ scene, path, area, random }) {
-  const { solid, glow } = createMaterials();
+  const { solid, glow } = createMaterials({ glowBoost: 1.5 });
   const walls = createBoxBatch(solid);
   const lights = createBoxBatch(glow);
 

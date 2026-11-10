@@ -10,6 +10,7 @@ export function createBoxBatch(material) {
     // base: 箱の底面の高さ（省略時は地面）
     add({ position, yaw, across, height, along, base = 0, color }) {
       items.push({ position: position.clone(), yaw, across, height, along, base, color });
+      return items.length - 1; // 後から色を変える（ネオンの明滅など）ための番号
     },
 
     build() {
@@ -44,7 +45,8 @@ export function createBoxBatch(material) {
 }
 
 // エリアの区間を一定間隔で歩き、各地点の情報を fn に渡す。
-// at(side, distance) は、その地点から道の左右（side: -1 左 / +1 右）へ distance だけ離れた位置を返す。
+// at(side, distance, forward) は、その地点から道の左右（side: -1 左 / +1 右）へ distance、
+// 進行方向へ forward だけ離れた位置を返す。
 export function alongPath(path, area, spacing, fn) {
   const start = area.from * path.length;
   const end = area.to * path.length;
@@ -63,15 +65,20 @@ export function alongPath(path, area, spacing, fn) {
       index,
       point,
       yaw: Math.atan2(tangent.x, tangent.z),
-      at: (side, distance) => point.clone().addScaledVector(right, side * distance),
+      at: (side, distance, forward = 0) => point.clone()
+        .addScaledVector(right, side * distance)
+        .addScaledVector(tangent, forward),
     });
   }
 }
 
-// 光を受ける面（建物など）と、自ら光る面（ネオンや窓）の素材
-export function createMaterials() {
+// 光を受ける面（建物など）と、自ら光る面（ネオンや窓）の素材。
+// glowBoost を1より大きくすると画面の白より明るくなり、光のにじみ（ブルーム）が強く出る。
+export function createMaterials({ glowBoost = 1 } = {}) {
+  const glow = new THREE.MeshBasicMaterial();
+  glow.color.setScalar(glowBoost);
   return {
     solid: new THREE.MeshLambertMaterial(),
-    glow: new THREE.MeshBasicMaterial(),
+    glow,
   };
 }

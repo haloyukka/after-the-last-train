@@ -98,7 +98,7 @@ export function build({ scene, path, area, random }) {
 
   scene.add(walls.build());
 
-  const on = new THREE.Color(CROSSING_RED);
+  const on = new THREE.Color(CROSSING_RED).multiplyScalar(2);
   const off = new THREE.Color(0x2a0606);
 
   return {
